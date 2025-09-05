@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useWallet, EVMWallet } from "@crossmint/client-sdk-react-ui";
+import { useWallet } from "@crossmint/client-sdk-react-ui";
 import { cn, USDC_CONTRACT_ADDRESS } from "@/lib/utils";
-import { encodeFunctionData } from "viem";
 import {
   createRainUserApplication,
   createRainUserContract,
@@ -33,7 +32,6 @@ export function RainCompleteFlow() {
   const [contractAddress, setContractAddress] = useState("");
   const [contractData, setContractData] = useState<any>(null);
   const [cardData, setCardData] = useState<any>(null);
-  const [rusdAmount, setRusdAmount] = useState("50");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [decryptedCardData, setDecryptedCardData] = useState<{
     cardNumber: string;
@@ -273,68 +271,6 @@ export function RainCompleteFlow() {
       setIsLoading(false);
     }
   };
-
-  // const handleFundCard = async () => {
-  //   if (!wallet || !contractAddress) return;
-
-  //   setIsLoading(true);
-  //   try {
-  //     console.log("🪙 Step 4a: Minting RUSD...");
-
-  //     const evmWallet = EVMWallet.from(wallet);
-  //     const mintFunctionData = encodeFunctionData({
-  //       abi: [
-  //         {
-  //           name: "mint",
-  //           type: "function",
-  //           stateMutability: "nonpayable",
-  //           inputs: [{ name: "_amountDollars_Max100", type: "uint256" }],
-  //           outputs: [],
-  //         },
-  //       ],
-  //       functionName: "mint",
-  //       args: [BigInt(rusdAmount)],
-  //     });
-
-  //     const mintTx = await evmWallet.sendTransaction({
-  //       to: RUSD_CONTRACT_ADDRESS,
-  //       data: mintFunctionData,
-  //       value: BigInt(0),
-  //       chain: "base-sepolia",
-  //     });
-
-  //     console.log("✅ RUSD minted:", mintTx.hash);
-  //     await new Promise((resolve) => setTimeout(resolve, 3000));
-
-  //     console.log("🏗️ Step 4b: Sending RUSD to Rain smart contract...");
-
-  //     // Send RUSD to the user's smart contract (not a wallet address)
-  //     const transferTx = await wallet.send(
-  //       contractAddress, // Send to their smart contract
-  //       "rusd",
-  //       rusdAmount
-  //     );
-
-  //     console.log("✅ Collateral deposited:", transferTx.explorerLink);
-
-  //     // Refresh contract data to show updated balance
-  //     if (rainUserId) {
-  //       const updatedContractInfo = await getRainUserContracts(rainUserId);
-  //       setContractData(updatedContractInfo);
-  //       console.log(
-  //         "🔄 Contract data refreshed, new RUSD balance:",
-  //         updatedContractInfo?.rusdToken.balance
-  //       );
-  //     }
-
-  //     alert("🎉 Collateral deposited! Card is ready to spend!");
-  //   } catch (error) {
-  //     console.error("Funding failed:", error);
-  //     alert("Funding failed: " + error);
-  //   } finally {
-  //     setIsLoading(false);
-  //   }
-  // };
 
   const handleRevealCard = async () => {
     if (!cardData?.id) return;
@@ -632,38 +568,6 @@ export function RainCompleteFlow() {
               )}
             </div>
           )}
-
-          {/* <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              RUSD Amount to Fund
-            </label>
-            <input
-              type="number"
-              value={rusdAmount}
-              onChange={(e) => setRusdAmount(e.target.value)}
-              max="100"
-              className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-              placeholder="RUSD amount (max 100)"
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              Will be deposited to: {contractAddress?.slice(0, 10)}...
-            </p>
-          </div>
-
-          <button
-            onClick={handleFundCard}
-            disabled={isLoading || !rusdAmount}
-            className={cn(
-              "w-full py-3 px-4 rounded-full text-sm font-medium mb-4",
-              isLoading || !rusdAmount
-                ? "bg-gray-300 text-gray-500"
-                : "bg-purple-600 text-white hover:bg-purple-700"
-            )}
-          >
-            {isLoading
-              ? "Minting & Depositing..."
-              : "Mint RUSD & Deposit Collateral"}
-          </button> */}
         </div>
       )}
 
