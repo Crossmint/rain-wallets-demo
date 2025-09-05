@@ -1,5 +1,5 @@
 {
-  "name": "wallets-quickstart",
+  "name": "rain-wallets-demo",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -9,14 +9,16 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@crossmint/client-sdk-react-ui": "2.3.4",
+    "@crossmint/client-sdk-react-ui": "2.4.8",
     "clsx": "^2.1.1",
+    "crypto": "^1.0.1",
     "next": "15.2.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-transition-group": "^4.4.5",
     "tailwind-merge": "^3.0.2",
-    "tw-animate-css": "^1.2.4"
+    "tw-animate-css": "^1.2.4",
+    "viem": "^2.37.2"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

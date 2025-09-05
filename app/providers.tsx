@@ -41,7 +41,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
         <CrossmintWalletProvider
           appearance={customAppearance}
           createOnLogin={{
-            chain: chain,
+            chain,
             signer: {
               type: "email",
             },

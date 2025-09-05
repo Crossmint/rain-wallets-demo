@@ -58,18 +58,9 @@ export function LandingPage({ isLoading }: { isLoading: boolean }) {
         {/* Content */}
         <div className="relative z-10 flex flex-col gap-12 text-white">
           <div className="flex flex-col gap-4">
-            <h1 className="text-6xl font-bold">Crossmint Wallets</h1>
+            <h1 className="text-6xl font-bold">Rain x Crossmint Demo</h1>
             <p className="text-white/60 text-lg">
-              Get started with the Crossmint Wallets Quickstart.{" "}
-              <a
-                href="https://github.com/crossmint/wallets-quickstart"
-                style={{ color: "white" }}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Clone this repo
-              </a>{" "}
-              and try it out in minutes!
+              Get started with the Rain x Crossmint Demo.{" "}
             </p>
           </div>
 
