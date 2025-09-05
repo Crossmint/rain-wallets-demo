@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useWallet } from "@crossmint/client-sdk-react-ui";
+import { useAuth, useWallet } from "@crossmint/client-sdk-react-ui";
 import { cn, USDC_CONTRACT_ADDRESS } from "@/lib/utils";
 import {
   createRainUserApplication,
@@ -25,6 +25,8 @@ type FlowStep = (typeof steps)[number];
 
 export function RainCompleteFlow() {
   const { wallet } = useWallet();
+  const { user } = useAuth();
+
   const [step, setStep] = useState<FlowStep>(steps[0]);
   const [isLoading, setIsLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
@@ -40,7 +42,10 @@ export function RainCompleteFlow() {
   const [isRevealing, setIsRevealing] = useState(false);
   const [showCardDetails, setShowCardDetails] = useState(false);
 
-  const walletEmail = wallet?.owner?.replace("email:", "");
+  // Try to derive email from wallet owner, otherwise just use authed user email
+  const walletEmail = wallet?.owner?.includes("email:")
+    ? wallet?.owner?.replace("email:", "")
+    : user?.email;
 
   console.log({ contractData });
 
