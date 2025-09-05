@@ -27,14 +27,14 @@ Create and interact with Crossmint wallets. This quickstart uses Crossmint Auth 
 
 Easily deploy the template to Vercel with the button below. You will need to set the required environment variables in the Vercel dashboard.
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FCrossmint%2Fwallets-quickstart&env=NEXT_PUBLIC_CROSSMINT_API_KEY)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FCrossmint%2Frain-wallets-demo&env=NEXT_PUBLIC_CROSSMINT_API_KEY,NEXT_PUBLIC_CHAIN,RAIN_API_KEY)
 
 ## Setup
 
 1. Clone the repository and navigate to the project folder:
 
 ```bash
-git clone https://github.com/crossmint/wallets-quickstart.git && cd wallets-quickstart
+git clone https://github.com/crossmint/rain-wallets-demo.git && cd rain-wallets-demo
 ```
 
 2. Install all dependencies:
@@ -59,9 +59,9 @@ cp .env.template .env
 
 ```bash
 NEXT_PUBLIC_CROSSMINT_API_KEY=your_api_key
+NEXT_PUBLIC_CHAIN=base-sepolia
 
-# Check all supported chains: https://docs.crossmint.com/introduction/supported-chains
-NEXT_PUBLIC_CHAIN=your_chain
+RAIN_API_KEY=your_rain_api_key
 ```
 
 5. Run the development server:
