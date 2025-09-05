@@ -1,6 +1,6 @@
 "use server";
 
-import { RUSD_CONTRACT_ADDRESS } from "@/lib/utils";
+import { BASE_SEPOLIA_CHAIN_ID, RUSD_CONTRACT_ADDRESS } from "@/lib/utils";
 import crypto from "crypto";
 
 interface RainConsumerApplication {
@@ -313,9 +313,9 @@ export async function getRainUserContracts(
 
       const contracts = await response.json();
 
-      // Find the Base Sepolia contract (chainId 84532)
+      // Find the Base Sepolia contract
       const baseSepoliaContract = contracts.find(
-        (contract: any) => contract.chainId === 84532
+        (contract: any) => contract.chainId === BASE_SEPOLIA_CHAIN_ID
       );
 
       if (!baseSepoliaContract) {
@@ -377,6 +377,39 @@ export async function getRainUserContracts(
       );
       await sleep(waitTime);
     }
+  }
+}
+
+export async function getRainUserCreditBalances(userId: string) {
+  try {
+    const response = await fetch(
+      `${RAIN_API_URL}/issuing/users/${userId}/balances`,
+      {
+        method: "GET",
+        headers: {
+          ["Api-Key"]: `${process.env.RAIN_API_KEY}`,
+          accept: "application/json",
+        },
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        `Failed to get user credit balances: ${response.statusText}`
+      );
+    }
+
+    const json = await response.json();
+    return {
+      creditLimit: json.creditLimit / 100,
+      pendingCharges: json.pendingCharges / 100,
+      postedCharges: json.postedCharges / 100,
+      balanceDue: json.balanceDue / 100,
+      spendingPower: json.spendingPower / 100,
+    };
+  } catch (err) {
+    console.error("Get user credit balances failed:", err);
+    throw new Error(`Failed to get user credit balances: ${err}`);
   }
 }
 

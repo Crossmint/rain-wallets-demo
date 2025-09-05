@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useAuth, useWallet } from "@crossmint/client-sdk-react-ui";
-import { cn, USDC_CONTRACT_ADDRESS } from "@/lib/utils";
+import { BASE_SEPOLIA_CHAIN_ID, cn, USDC_CONTRACT_ADDRESS } from "@/lib/utils";
 import {
   createRainUserApplication,
   createRainUserContract,
@@ -10,6 +10,7 @@ import {
   getRainUserByWalletAddress,
   getRainUserCards,
   getRainUserContracts,
+  getRainUserCreditBalances,
   issueRainCard,
 } from "@/actions/rain";
 import Image from "next/image";
@@ -35,19 +36,24 @@ export function RainCompleteFlow() {
   const [contractData, setContractData] = useState<any>(null);
   const [cardData, setCardData] = useState<any>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isRevealing, setIsRevealing] = useState(false);
+  const [showCardDetails, setShowCardDetails] = useState(false);
   const [decryptedCardData, setDecryptedCardData] = useState<{
     cardNumber: string;
     cvc: string;
   } | null>(null);
-  const [isRevealing, setIsRevealing] = useState(false);
-  const [showCardDetails, setShowCardDetails] = useState(false);
+  const [creditBalances, setCreditBalances] = useState<{
+    creditLimit: number;
+    pendingCharges: number;
+    postedCharges: number;
+    balanceDue: number;
+    spendingPower: number;
+  } | null>(null);
 
   // Try to derive email from wallet owner, otherwise just use authed user email
   const walletEmail = wallet?.owner?.includes("email:")
     ? wallet?.owner?.replace("email:", "")
     : user?.email;
-
-  console.log({ contractData });
 
   useEffect(() => {
     const determineCurrentStep = async () => {
@@ -91,6 +97,8 @@ export function RainCompleteFlow() {
               setCardData(cards[0]);
               setStep("card-issued");
               console.log("💳 Found existing card(s):", cards);
+
+              await handleRefreshCreditBalances(user.id);
             } else {
               // User has contract but no card - ready to issue card
               setStep("contract-created");
@@ -108,7 +116,7 @@ export function RainCompleteFlow() {
           console.log("🏗️ User exists but no contract - creating contract");
 
           try {
-            await createRainUserContract(user.id, 84532);
+            await createRainUserContract(user.id, BASE_SEPOLIA_CHAIN_ID);
             const newContractInfo = await getRainUserContracts(user.id);
             setContractAddress(newContractInfo?.depositAddress);
             setContractData(newContractInfo);
@@ -204,7 +212,7 @@ export function RainCompleteFlow() {
       console.log("🏗️ Now creating contract...");
 
       // Create contract immediately after user creation
-      await createRainUserContract(result.userId, 84532);
+      await createRainUserContract(result.userId, BASE_SEPOLIA_CHAIN_ID);
       const contractInfo = await getRainUserContracts(result.userId);
 
       setContractAddress(contractInfo?.depositAddress);
@@ -227,7 +235,7 @@ export function RainCompleteFlow() {
       console.log("🏗️ Step 2: Creating Rain smart contract...");
 
       // Create the contract
-      await createRainUserContract(rainUserId, 84532); // Base Sepolia
+      await createRainUserContract(rainUserId, BASE_SEPOLIA_CHAIN_ID); // Base Sepolia
 
       // Get the contract details
       const contractInfo = await getRainUserContracts(rainUserId);
@@ -267,6 +275,8 @@ export function RainCompleteFlow() {
         displayName: card.displayName,
       });
 
+      await handleRefreshCreditBalances();
+
       setStep("card-issued");
       alert("🎉 Virtual card issued!");
     } catch (error) {
@@ -290,6 +300,19 @@ export function RainCompleteFlow() {
       alert("Failed to reveal card details: " + error);
     } finally {
       setIsRevealing(false);
+    }
+  };
+
+  const handleRefreshCreditBalances = async (userId?: string) => {
+    const userIdToUse = userId || rainUserId;
+    if (!userIdToUse) return;
+
+    try {
+      console.log("💳 Refreshing credit balances...");
+      const balances = await getRainUserCreditBalances(userIdToUse);
+      setCreditBalances(balances);
+    } catch (error) {
+      console.error("Failed to refresh credit balances:", error);
     }
   };
 
@@ -561,6 +584,92 @@ export function RainCompleteFlow() {
                   </p>
                 </div>
               </div>
+
+              {/* Credit Balance Information */}
+              {creditBalances && (
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <div className="flex justify-between items-center mb-3">
+                    <div className="flex gap-2 items-center">
+                      <h6 className="font-medium text-gray-800">
+                        Credit Balance
+                      </h6>
+                      <div className="text-xs text-gray-500">
+                        Balance updates may take a few seconds to appear.
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleRefreshCreditBalances()}
+                      disabled={isRefreshing}
+                      className={cn(
+                        "text-xs px-2 py-1 rounded transition-colors",
+                        isRefreshing
+                          ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                          : "bg-blue-100 text-blue-700 hover:bg-blue-200"
+                      )}
+                    >
+                      {isRefreshing ? "Refreshing..." : "Refresh"}
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="text-gray-500">Credit Limit:</span>
+                      <p className="font-semibold text-blue-600">
+                        ${creditBalances.creditLimit.toFixed(2)}
+                      </p>
+                    </div>
+
+                    <div>
+                      <span className="text-gray-500">Spending Power:</span>
+                      <p className="font-semibold text-green-600">
+                        ${creditBalances.spendingPower.toFixed(2)}
+                      </p>
+                    </div>
+
+                    <div>
+                      <span className="text-gray-500">Pending Charges:</span>
+                      <p
+                        className={cn(
+                          "font-medium",
+                          creditBalances.pendingCharges > 0
+                            ? "text-yellow-600"
+                            : "text-gray-600"
+                        )}
+                      >
+                        ${creditBalances.pendingCharges.toFixed(2)}
+                      </p>
+                    </div>
+
+                    <div>
+                      <span className="text-gray-500">Posted Charges:</span>
+                      <p
+                        className={cn(
+                          "font-medium",
+                          creditBalances.postedCharges > 0
+                            ? "text-red-600"
+                            : "text-gray-600"
+                        )}
+                      >
+                        ${creditBalances.postedCharges.toFixed(2)}
+                      </p>
+                    </div>
+
+                    <div className="col-span-2">
+                      <span className="text-gray-500">Balance Due:</span>
+                      <p
+                        className={cn(
+                          "font-semibold text-lg",
+                          creditBalances.balanceDue > 0
+                            ? "text-red-600"
+                            : "text-green-600"
+                        )}
+                      >
+                        ${creditBalances.balanceDue.toFixed(2)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Security Notice */}
               {showCardDetails && (
