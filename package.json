@@ -9,7 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@crossmint/client-sdk-react-ui": "2.4.8",
+    "@crossmint/client-sdk-react-ui": "2.5.7",
     "clsx": "^2.1.1",
     "crypto": "^1.0.1",
     "next": "15.2.4",
