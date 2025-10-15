@@ -320,7 +320,7 @@ export function RainCompleteFlow() {
         to: RUSD_CONTRACT_ADDRESS,
         data: mintFunctionData,
         value: BigInt(0),
-        chain: process.env.NEXT_PUBLIC_CHAIN,
+        chain: "base-sepolia",
       });
 
       console.log("✅ RUSD minted:", mintTx.hash);
