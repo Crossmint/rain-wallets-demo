@@ -1,8 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useAuth, useWallet } from "@crossmint/client-sdk-react-ui";
-import { BASE_SEPOLIA_CHAIN_ID, cn, USDC_CONTRACT_ADDRESS } from "@/lib/utils";
+import { EVMWallet, useAuth, useWallet } from "@crossmint/client-sdk-react-ui";
+import Image from "next/image";
+import { encodeFunctionData } from "viem";
+import {
+  BASE_SEPOLIA_CHAIN_ID,
+  cn,
+  RUSD_CONTRACT_ADDRESS,
+  USDC_CONTRACT_ADDRESS,
+} from "@/lib/utils";
 import {
   createRainUserApplication,
   createRainUserContract,
@@ -13,7 +20,6 @@ import {
   getRainUserCreditBalances,
   issueRainCard,
 } from "@/actions/rain";
-import Image from "next/image";
 
 const steps = [
   "signup",
@@ -35,6 +41,7 @@ export function RainCompleteFlow() {
   const [contractAddress, setContractAddress] = useState("");
   const [contractData, setContractData] = useState<any>(null);
   const [cardData, setCardData] = useState<any>(null);
+  const [rusdAmount, setRusdAmount] = useState("5");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isRevealing, setIsRevealing] = useState(false);
   const [showCardDetails, setShowCardDetails] = useState(false);
@@ -287,6 +294,68 @@ export function RainCompleteFlow() {
     }
   };
 
+  const handleFundCard = async () => {
+    if (!wallet || !contractAddress) return;
+
+    setIsLoading(true);
+    try {
+      console.log("🪙 Step 4a: Minting RUSD...");
+
+      const evmWallet = EVMWallet.from(wallet);
+      const mintFunctionData = encodeFunctionData({
+        abi: [
+          {
+            name: "mint",
+            type: "function",
+            stateMutability: "nonpayable",
+            inputs: [{ name: "_amountDollars_Max100", type: "uint256" }],
+            outputs: [],
+          },
+        ],
+        functionName: "mint",
+        args: [BigInt(rusdAmount)],
+      });
+
+      const mintTx = await evmWallet.sendTransaction({
+        to: RUSD_CONTRACT_ADDRESS,
+        data: mintFunctionData,
+        value: BigInt(0),
+        chain: process.env.NEXT_PUBLIC_CHAIN,
+      });
+
+      console.log("✅ RUSD minted:", mintTx.hash);
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+
+      console.log("🏗️ Step 4b: Sending RUSD to Rain smart contract...");
+
+      // Send RUSD to the user's smart contract (not a wallet address)
+      const transferTx = await wallet.send(
+        contractAddress, // Send to their smart contract
+        RUSD_CONTRACT_ADDRESS,
+        rusdAmount
+      );
+
+      console.log("✅ Collateral deposited:", transferTx.explorerLink);
+
+      // Refresh contract data to show updated balance
+      if (rainUserId) {
+        const updatedContractInfo = await getRainUserContracts(rainUserId);
+        setContractData(updatedContractInfo);
+        console.log(
+          "🔄 Contract data refreshed, new RUSD balance:",
+          updatedContractInfo?.rusdToken.balance
+        );
+      }
+
+      alert("🎉 Collateral deposited! Card is ready to spend!");
+    } catch (error) {
+      console.error("Funding failed:", error);
+      alert("Funding failed: " + error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleRevealCard = async () => {
     if (!cardData?.id) return;
 
@@ -464,15 +533,69 @@ export function RainCompleteFlow() {
 
       {/* Update Step 4: Fund Card text */}
       {step === "card-issued" && (
-        <div className="space-y-4 mb-4">
+        <div className="space-y-6 mb-6">
           <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
             <h4 className="font-medium text-purple-800 mb-2">
               💳 Card Issued!
             </h4>
             <p className="text-sm text-purple-700">
-              Your virtual Visa card is ready. Fund it with RUSD or USDC
-              collateral to enable spending.
+              Your virtual Visa card is ready. Fund it with RUSD collateral to
+              enable spending.
             </p>
+          </div>
+
+          {/* Fund Card Section */}
+          <div className="bg-white border border-gray-200 rounded-lg p-4">
+            <h4 className="font-medium text-gray-900 mb-3">Fund Card</h4>
+
+            <div>
+              <label className="block text-sm text-gray-700 mb-2">
+                Amount (RUSD)
+              </label>
+
+              {/* Amount Buttons and Fund Button */}
+              <div className="flex gap-2">
+                {[5, 10, 25, 50].map((amount) => (
+                  <button
+                    key={amount}
+                    onClick={() => setRusdAmount(amount.toString())}
+                    className={cn(
+                      "px-3 py-2 text-sm border rounded transition-colors",
+                      rusdAmount === amount.toString()
+                        ? "border-blue-500 bg-blue-50 text-blue-700"
+                        : "border-gray-300 bg-white text-gray-700 hover:border-gray-400"
+                    )}
+                  >
+                    ${amount}
+                  </button>
+                ))}
+
+                <button
+                  onClick={handleFundCard}
+                  disabled={
+                    isLoading ||
+                    !rusdAmount ||
+                    parseFloat(rusdAmount) <= 0 ||
+                    parseFloat(rusdAmount) > 100
+                  }
+                  className={cn(
+                    "px-4 py-2 text-sm font-medium rounded transition-colors",
+                    isLoading ||
+                      !rusdAmount ||
+                      parseFloat(rusdAmount) <= 0 ||
+                      parseFloat(rusdAmount) > 100
+                      ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                      : "bg-blue-600 text-white hover:bg-blue-700"
+                  )}
+                >
+                  {isLoading ? "Processing..." : `Fund ($${rusdAmount})`}
+                </button>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                (This will mint RUSD to your Crossmint wallet and send it to
+                your Rain smart contract)
+              </p>
+            </div>
           </div>
 
           {/* Card Details Display */}
