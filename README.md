@@ -2,10 +2,10 @@
 <img width="200" alt="Image" src="https://github.com/user-attachments/assets/8b617791-cd37-4a5a-8695-a7c9018b7c70" />
 <br>
 <br>
-<h1>todo: update Rain wallets Quickstart</h1>
+<h1>Crossmint Wallets & Rain Quickstart</h1>
 
 <div align="center">
-<a href="https://wallets.demos-crossmint.com/">Live Demo</a> | <a href="https://docs.crossmint.com/introduction/platform/wallets">Docs</a> | <a href="https://www.crossmint.com/quickstarts">See all quickstarts</a>
+<a href="https://rain-wallets-demo.vercel.app/">Live Demo</a> | <a href="https://docs.crossmint.com/introduction/platform/wallets">Docs</a> | <a href="https://www.crossmint.com/quickstarts">See all quickstarts</a>
 </div>
 
 <br>
@@ -14,14 +14,13 @@
 
 ## Introduction
 
-Create and interact with Crossmint wallets. This quickstart uses Crossmint Auth and uses your email as a signer for that wallet.
+This quickstart demonstrates how to integrate Rain's card issuance platform with Crossmint wallets to build a complete crypto-to-debit card application. You'll learn how to create an app where users can sign up, get approved for cards, and fund them directly from their Crossmint wallets.
 
 **Learn how to:**
 
-- Create a wallet
-- View its balance for USDXM (USDXM is a test stablecoin by Crossmint) and native tokens
-- View wallet transaction activity
-- Send USDXM or native tokens to another wallet
+- Virtual Visa card issuance
+- Crypto-to-card funding with RUSD tokens
+- Real-time balance and transaction monitoring
 
 ## Deploy
 

@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Wallets Quickstart",
-  description: "A quickstart for wallets",
+  title: "Wallets & Rain Quickstart",
+  description: "A quickstart for Crossmint Wallets & Rain",
 };
 
 export default function RootLayout({
