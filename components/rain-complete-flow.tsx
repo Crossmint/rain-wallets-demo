@@ -350,7 +350,11 @@ export function RainCompleteFlow() {
       alert("🎉 Collateral deposited! Card is ready to spend!");
     } catch (error) {
       console.error("Funding failed:", error);
-      alert("Funding failed: " + error);
+      if (error instanceof Error && error.name === "AuthRejectedError") {
+        return; // skip showing alert
+      } else {
+        alert("Funding failed: " + error);
+      }
     } finally {
       setIsLoading(false);
     }
