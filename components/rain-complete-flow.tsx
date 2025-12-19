@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { EVMWallet, useAuth, useWallet } from "@crossmint/client-sdk-react-ui";
 import Image from "next/image";
-import { encodeFunctionData } from "viem";
 import {
   BASE_SEPOLIA_CHAIN_ID,
   cn,
@@ -302,7 +301,9 @@ export function RainCompleteFlow() {
       console.log("🪙 Step 4a: Minting RUSD...");
 
       const evmWallet = EVMWallet.from(wallet);
-      const mintFunctionData = encodeFunctionData({
+
+      await evmWallet.sendTransaction({
+        to: RUSD_CONTRACT_ADDRESS,
         abi: [
           {
             name: "mint",
@@ -315,27 +316,6 @@ export function RainCompleteFlow() {
         functionName: "mint",
         args: [BigInt(rusdAmount)],
       });
-
-      const mintTx = await evmWallet.sendTransaction({
-        to: RUSD_CONTRACT_ADDRESS,
-        data: mintFunctionData,
-        value: BigInt(0),
-        chain: "base-sepolia",
-      });
-
-      console.log("✅ RUSD minted:", mintTx.hash);
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-
-      console.log("🏗️ Step 4b: Sending RUSD to Rain smart contract...");
-
-      // Send RUSD to the user's smart contract (not a wallet address)
-      const transferTx = await wallet.send(
-        contractAddress, // Send to their smart contract
-        RUSD_CONTRACT_ADDRESS,
-        rusdAmount
-      );
-
-      console.log("✅ Collateral deposited:", transferTx.explorerLink);
 
       // Refresh contract data to show updated balance
       if (rainUserId) {
