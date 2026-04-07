@@ -105,7 +105,7 @@ export function RainCompleteFlow() {
         try {
           const contractInfo = await getRainUserContracts(u.id);
           setContractAddress(contractInfo?.depositAddress);
-          setContractData(contractInfo);
+          setContractData(contractInfo ?? null);
 
           try {
             const cards = await getRainUserCards(u.id);
@@ -124,7 +124,7 @@ export function RainCompleteFlow() {
             await createRainUserContract(u.id, BASE_SEPOLIA_CHAIN_ID);
             const newContract = await getRainUserContracts(u.id);
             setContractAddress(newContract?.depositAddress);
-            setContractData(newContract);
+            setContractData(newContract ?? null);
             setStep("contract-created");
           } catch {
             setStep("signup");
@@ -155,7 +155,7 @@ export function RainCompleteFlow() {
     setIsRefreshing(true);
     try {
       const updated = await getRainUserContracts(rainUserId);
-      setContractData(updated);
+      setContractData(updated ?? null);
       await refreshCreditBalances();
     } catch (err) {
       console.error("Failed to refresh:", err);
@@ -196,7 +196,7 @@ export function RainCompleteFlow() {
       await createRainUserContract(result.userId, BASE_SEPOLIA_CHAIN_ID);
       const contractInfo = await getRainUserContracts(result.userId);
       setContractAddress(contractInfo?.depositAddress);
-      setContractData(contractInfo);
+      setContractData(contractInfo ?? null);
       setStep("contract-created");
     } catch (err) {
       console.error("Rain signup failed:", err);
@@ -281,7 +281,7 @@ export function RainCompleteFlow() {
       if (rainUserId) {
         await new Promise((r) => setTimeout(r, 3000));
         const updated = await getRainUserContracts(rainUserId);
-        setContractData(updated);
+        setContractData(updated ?? null);
         await refreshCreditBalances();
       }
     } catch (err) {
