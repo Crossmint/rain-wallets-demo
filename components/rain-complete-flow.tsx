@@ -2,10 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { EVMWallet, useAuth, useWallet } from "@crossmint/client-sdk-react-ui";
-import Image from "next/image";
+import { CreditCard, X, EyeOff, Eye, Plus, Lock, Copy } from "lucide-react";
 import {
   BASE_SEPOLIA_CHAIN_ID,
-  cn,
   RUSD_CONTRACT_ADDRESS,
   USDC_CONTRACT_ADDRESS,
 } from "@/lib/utils";
@@ -20,30 +19,57 @@ import {
   issueRainCard,
 } from "@/actions/rain";
 
-const steps = [
+const STEPS = [
   "signup",
   "approved",
   "contract-created",
   "card-issued",
 ] as const;
 
-type FlowStep = (typeof steps)[number];
+type FlowStep = (typeof STEPS)[number];
+
+interface ContractToken {
+  address: string;
+  balance: string;
+}
+
+interface ContractData {
+  contractId: string;
+  chainId: number;
+  depositAddress: string;
+  proxyAddress: string;
+  controllerAddress: string;
+  tokens: ContractToken[];
+  contractVersion: string;
+  rusdToken: ContractToken & { exchangeRate: number; advanceRate: number };
+}
+
+interface CardData {
+  id: string;
+  status: string;
+  type: string;
+  limit?: { frequency: string; amount: number };
+  last4?: string;
+  lastFour?: string;
+  displayName?: string;
+}
 
 export function RainCompleteFlow() {
   const { wallet } = useWallet();
   const { user } = useAuth();
 
-  const [step, setStep] = useState<FlowStep>(steps[0]);
+  const [step, setStep] = useState<FlowStep>("signup");
   const [isLoading, setIsLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [rainUserId, setRainUserId] = useState("");
   const [contractAddress, setContractAddress] = useState("");
-  const [contractData, setContractData] = useState<any>(null);
-  const [cardData, setCardData] = useState<any>(null);
+  const [contractData, setContractData] = useState<ContractData | null>(null);
+  const [cardData, setCardData] = useState<CardData | null>(null);
   const [rusdAmount, setRusdAmount] = useState("5");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isRevealing, setIsRevealing] = useState(false);
   const [showCardDetails, setShowCardDetails] = useState(false);
+  const [showManageModal, setShowManageModal] = useState(false);
   const [decryptedCardData, setDecryptedCardData] = useState<{
     cardNumber: string;
     cvc: string;
@@ -56,134 +82,92 @@ export function RainCompleteFlow() {
     spendingPower: number;
   } | null>(null);
 
-  // Try to derive email from wallet owner, otherwise just use authed user email
   const walletEmail = wallet?.owner?.includes("email:")
     ? wallet?.owner?.replace("email:", "")
     : user?.email;
 
+  const currentStepIndex = STEPS.indexOf(step);
+
   useEffect(() => {
     const determineCurrentStep = async () => {
       if (!wallet?.address || !walletEmail) return;
-
       setInitialLoading(true);
       try {
-        console.log("🔍 Determining current demo state...");
-
-        // Step 1: Check if user already exists with this wallet address
         const existingUsers = await getRainUserByWalletAddress(wallet.address);
-
         if (existingUsers.length === 0) {
-          // No user exists - start from signup
           setStep("signup");
-          console.log("📝 No existing user found - starting from signup");
           return;
         }
 
-        // User exists - get their details
-        const user = existingUsers[0];
-        setRainUserId(user.id);
-        console.log("👤 Found existing user:", user.id);
+        const u = existingUsers[0];
+        setRainUserId(u.id);
 
-        // Step 2: Check if they have contracts
         try {
-          const contractInfo = await getRainUserContracts(user.id);
+          const contractInfo = await getRainUserContracts(u.id);
           setContractAddress(contractInfo?.depositAddress);
           setContractData(contractInfo);
-          console.log(
-            "🏗️ Found existing contract:",
-            contractInfo?.depositAddress
-          );
 
-          // Step 3: Check if they have cards
           try {
-            const cards = await getRainUserCards(user.id);
-
+            const cards = await getRainUserCards(u.id);
             if (cards.length > 0) {
-              // User has cards - ready for funding
               setCardData(cards[0]);
               setStep("card-issued");
-              console.log("💳 Found existing card(s):", cards);
-
-              await handleRefreshCreditBalances(user.id);
+              await refreshCreditBalances(u.id);
             } else {
-              // User has contract but no card - ready to issue card
               setStep("contract-created");
-              console.log("🏗️ Contract exists, no card - ready to issue card");
             }
-          } catch (cardError) {
-            // Error checking cards - assume no cards exist
+          } catch {
             setStep("contract-created");
-            console.log(
-              "🏗️ Contract exists, no cards found - ready to issue card"
-            );
           }
-        } catch (contractError) {
-          // User exists but no contract - create contract
-          console.log("🏗️ User exists but no contract - creating contract");
-
+        } catch {
           try {
-            await createRainUserContract(user.id, BASE_SEPOLIA_CHAIN_ID);
-            const newContractInfo = await getRainUserContracts(user.id);
-            setContractAddress(newContractInfo?.depositAddress);
-            setContractData(newContractInfo);
+            await createRainUserContract(u.id, BASE_SEPOLIA_CHAIN_ID);
+            const newContract = await getRainUserContracts(u.id);
+            setContractAddress(newContract?.depositAddress);
+            setContractData(newContract);
             setStep("contract-created");
-            console.log(
-              "✅ Contract created:",
-              newContractInfo?.depositAddress
-            );
-          } catch (createError) {
-            console.error("Failed to create contract:", createError);
-            setStep("signup"); // Fall back to signup
+          } catch {
+            setStep("signup");
           }
         }
-      } catch (error) {
-        console.error("Error determining step:", error);
-        setStep("signup"); // Default to signup on error
+      } catch {
+        setStep("signup");
       } finally {
         setInitialLoading(false);
       }
     };
-
     determineCurrentStep();
   }, [wallet?.address, walletEmail]);
 
+  const refreshCreditBalances = async (userId?: string) => {
+    const id = userId || rainUserId;
+    if (!id) return;
+    try {
+      const balances = await getRainUserCreditBalances(id);
+      setCreditBalances(balances);
+    } catch (err) {
+      console.error("Failed to refresh credit balances:", err);
+    }
+  };
+
   const handleRefreshBalance = async () => {
     if (!rainUserId) return;
-
     setIsRefreshing(true);
     try {
-      console.log("🔄 Manually refreshing contract balance...");
-      const updatedContractInfo = await getRainUserContracts(rainUserId);
-
-      const currentBalance = contractData?.rusdToken.balance || "0";
-      const newBalance = updatedContractInfo?.rusdToken.balance || "0";
-
-      console.log(
-        `💰 Current: ${currentBalance} RUSD, New: ${newBalance} RUSD`
-      );
-
-      setContractData(updatedContractInfo);
-
-      if (newBalance !== currentBalance) {
-        console.log(
-          `💰 Balance updated: ${currentBalance} → ${newBalance} RUSD`
-        );
-      }
-    } catch (error) {
-      console.error("Failed to refresh contract balance:", error);
-      alert("Failed to refresh balance: " + error);
+      const updated = await getRainUserContracts(rainUserId);
+      setContractData(updated);
+      await refreshCreditBalances();
+    } catch (err) {
+      console.error("Failed to refresh:", err);
     } finally {
       setIsRefreshing(false);
     }
   };
 
-  const handleRainSignup = async () => {
+  const handleApply = async () => {
     if (!wallet || !walletEmail) return;
-
     setIsLoading(true);
     try {
-      console.log("🌧️ Creating Rain consumer application...");
-
       const result = await createRainUserApplication({
         firstName: walletEmail,
         lastName: "approved",
@@ -207,52 +191,15 @@ export function RainCompleteFlow() {
         isTermsOfServiceAccepted: true,
         walletAddress: wallet.address,
       });
-
       setRainUserId(result.userId);
-
-      console.log("✅ User created, waiting before creating contract...");
-
-      // Wait for user to be fully processed before creating contract
-      await new Promise((resolve) => setTimeout(resolve, 5000)); // 5 second delay
-
-      console.log("🏗️ Now creating contract...");
-
-      // Create contract immediately after user creation
+      await new Promise((r) => setTimeout(r, 5000));
       await createRainUserContract(result.userId, BASE_SEPOLIA_CHAIN_ID);
       const contractInfo = await getRainUserContracts(result.userId);
-
       setContractAddress(contractInfo?.depositAddress);
       setContractData(contractInfo);
       setStep("contract-created");
-      alert("✅ Rain user and contract created!");
-    } catch (error) {
-      console.error("Rain signup failed:", error);
-      alert("Rain signup failed: " + error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleCreateContract = async () => {
-    if (!rainUserId) return;
-
-    setIsLoading(true);
-    try {
-      console.log("🏗️ Step 2: Creating Rain smart contract...");
-
-      // Create the contract
-      await createRainUserContract(rainUserId, BASE_SEPOLIA_CHAIN_ID); // Base Sepolia
-
-      // Get the contract details
-      const contractInfo = await getRainUserContracts(rainUserId);
-
-      setContractAddress(contractInfo?.depositAddress);
-      setContractData(contractInfo);
-      setStep("contract-created");
-      alert("✅ Smart contract created! Ready to issue card.");
-    } catch (error) {
-      console.error("Contract creation failed:", error);
-      alert("Contract creation failed: " + error);
+    } catch (err) {
+      console.error("Rain signup failed:", err);
     } finally {
       setIsLoading(false);
     }
@@ -260,18 +207,14 @@ export function RainCompleteFlow() {
 
   const handleIssueCard = async () => {
     if (!rainUserId) return;
-
     setIsLoading(true);
     try {
-      console.log("💳 Issuing Rain card...");
-
       const card = await issueRainCard(rainUserId, {
         type: "virtual",
         limit: { frequency: "allTime", amount: 1000 },
         displayName: walletEmail,
         status: "active",
       });
-
       setCardData({
         id: card.cardId,
         type: card.type,
@@ -280,14 +223,10 @@ export function RainCompleteFlow() {
         last4: card.lastFour,
         displayName: card.displayName,
       });
-
-      await handleRefreshCreditBalances();
-
+      await refreshCreditBalances();
       setStep("card-issued");
-      alert("🎉 Virtual card issued!");
-    } catch (error) {
-      console.error("Card issuance failed:", error);
-      alert("Card issuance failed: " + error);
+    } catch (err) {
+      console.error("Card issuance failed:", err);
     } finally {
       setIsLoading(false);
     }
@@ -295,13 +234,11 @@ export function RainCompleteFlow() {
 
   const handleFundCard = async () => {
     if (!wallet || !contractAddress) return;
-
     setIsLoading(true);
     try {
-      console.log("🪙 Step 4a: Minting RUSD...");
-
       const evmWallet = EVMWallet.from(wallet);
 
+      // Step 1: Mint RUSD to wallet
       await evmWallet.sendTransaction({
         to: RUSD_CONTRACT_ADDRESS,
         abi: [
@@ -317,24 +254,39 @@ export function RainCompleteFlow() {
         args: [BigInt(rusdAmount)],
       });
 
-      // Refresh contract data to show updated balance
-      if (rainUserId) {
-        const updatedContractInfo = await getRainUserContracts(rainUserId);
-        setContractData(updatedContractInfo);
-        console.log(
-          "🔄 Contract data refreshed, new RUSD balance:",
-          updatedContractInfo?.rusdToken.balance
-        );
-      }
+      // Step 2: Wait for mint to settle
+      await new Promise((r) => setTimeout(r, 2000));
 
-      alert("🎉 Collateral deposited! Card is ready to spend!");
-    } catch (error) {
-      console.error("Funding failed:", error);
-      if (error instanceof Error && error.name === "AuthRejectedError") {
-        return; // skip showing alert
-      } else {
-        alert("Funding failed: " + error);
+      // Step 3: Transfer RUSD from wallet to Rain contract
+      const tokenAmount = BigInt(rusdAmount) * BigInt(10 ** 6);
+      await evmWallet.sendTransaction({
+        to: RUSD_CONTRACT_ADDRESS,
+        abi: [
+          {
+            name: "transfer",
+            type: "function",
+            stateMutability: "nonpayable",
+            inputs: [
+              { name: "to", type: "address" },
+              { name: "amount", type: "uint256" },
+            ],
+            outputs: [{ name: "", type: "bool" }],
+          },
+        ],
+        functionName: "transfer",
+        args: [contractAddress, tokenAmount],
+      });
+
+      // Step 4: Wait and refresh contract data + credit balances
+      if (rainUserId) {
+        await new Promise((r) => setTimeout(r, 3000));
+        const updated = await getRainUserContracts(rainUserId);
+        setContractData(updated);
+        await refreshCreditBalances();
       }
+    } catch (err) {
+      if (err instanceof Error && err.name === "AuthRejectedError") return;
+      console.error("Funding failed:", err);
     } finally {
       setIsLoading(false);
     }
@@ -342,218 +294,376 @@ export function RainCompleteFlow() {
 
   const handleRevealCard = async () => {
     if (!cardData?.id) return;
-
     setIsRevealing(true);
     try {
       const decrypted = await getDecryptedCardData(cardData.id);
       setDecryptedCardData(decrypted);
       setShowCardDetails(true);
-    } catch (error) {
-      console.error("Failed to reveal card:", error);
-      alert("Failed to reveal card details: " + error);
+    } catch (err) {
+      console.error("Failed to reveal:", err);
     } finally {
       setIsRevealing(false);
     }
   };
 
-  const handleRefreshCreditBalances = async (userId?: string) => {
-    const userIdToUse = userId || rainUserId;
-    if (!userIdToUse) return;
+  const formatCardNumber = (n: string) => n.replace(/(.{4})/g, "$1 ").trim();
+  const last4 = cardData?.last4 || cardData?.lastFour || "\u2022\u2022\u2022\u2022";
 
-    try {
-      console.log("💳 Refreshing credit balances...");
-      const balances = await getRainUserCreditBalances(userIdToUse);
-      setCreditBalances(balances);
-    } catch (error) {
-      console.error("Failed to refresh credit balances:", error);
-    }
-  };
-
-  const formatCardNumber = (cardNumber: string) => {
-    return cardNumber.replace(/(.{4})/g, "$1 ").trim();
-  };
-
-  if (initialLoading) {
-    return (
-      <div className="bg-white rounded-2xl border shadow-sm p-6">
-        <div className="flex items-center justify-center py-8">
-          <div className="flex items-center justify-center h-full">
-            <div className="w-8 h-8 border-4 border-accent border-t-transparent rounded-full animate-spin" />
-            <p className="text-gray-600 ml-2">Checking demo state...</p>
-          </div>
+  const CardVisual = ({ className = "" }: { className?: string }) => (
+    <div
+      className={`rounded-xl bg-gradient-to-br from-[#1e293b] to-[#0f172a] p-5 text-white ${className}`}
+    >
+      <div className="flex h-full flex-col justify-between">
+        <div className="flex items-start justify-between">
+          <span className="text-[11px] font-semibold tracking-wider text-white/50 uppercase">
+            Rain
+          </span>
+          <img
+            src="/rainxyz.jpg"
+            alt="Rain"
+            className="h-7 w-10 rounded object-cover"
+          />
         </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="bg-white rounded-2xl border shadow-sm p-6">
-      <div className="flex items-center gap-3 mb-6">
-        <Image
-          src="/rainxyz.jpg"
-          alt="Rain logo"
-          width={32}
-          height={32}
-          className="rounded-full"
-        />
         <div>
-          <h3 className="text-lg font-semibold">Rain Demo</h3>
-          <p className="text-sm text-gray-500">
-            Hardcoded test data for quick demo
+          <p className="mb-3 font-mono text-[13px] tracking-[0.15em] text-white/50">
+            {showCardDetails && decryptedCardData
+              ? formatCardNumber(decryptedCardData.cardNumber)
+              : `\u2022\u2022\u2022\u2022 \u2022\u2022\u2022\u2022 \u2022\u2022\u2022\u2022 ${last4}`}
           </p>
-        </div>
-      </div>
-
-      {/* Progress */}
-      <div className="flex items-center gap-2 mb-6">
-        {steps.map((stepName, index) => (
-          <div key={stepName} className="flex items-center">
-            <div
-              className={cn(
-                "w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium",
-                step === stepName
-                  ? "bg-blue-600 text-white"
-                  : steps.indexOf(step) > index
-                  ? "bg-green-600 text-white"
-                  : "bg-gray-300 text-gray-600"
-              )}
-            >
-              {index + 1}
-            </div>
-            {index < steps.length - 1 && (
-              <div className="w-6 h-0.5 bg-gray-300 mx-1" />
-            )}
-          </div>
-        ))}
-      </div>
-
-      {/* Step 1: Simple signup */}
-      {step === "signup" && (
-        <div className="space-y-4">
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <h4 className="font-medium text-blue-800 mb-2">Quick Demo Setup</h4>
-            <p className="text-sm text-blue-700">
-              All KYC data is hardcoded for demo.
-            </p>
-          </div>
-
-          <div className="text-xs text-gray-500 bg-gray-50 p-3 rounded">
-            <p>
-              <strong>Hardcoded test data:</strong>
-            </p>
-            <p>• Name: "{walletEmail} approved"</p>
-            <p>• DOB: 1990-01-01</p>
-            <p>• Address: 123 Test Street, San Francisco, CA 94105</p>
-            <p>• Salary: $75,000</p>
-            <p>
-              • Note: For testing purposes, KYC will be skipped by passing
-              "approved" as the last name
-            </p>
-          </div>
-
-          <button
-            onClick={handleRainSignup}
-            disabled={isLoading || !walletEmail}
-            className={cn(
-              "w-full py-3 px-4 rounded-full text-sm font-medium transition-colors",
-              isLoading || !walletEmail
-                ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                : "bg-blue-600 text-white hover:bg-blue-700"
-            )}
-          >
-            {isLoading ? "Submitting..." : "Submit Rain Application"}
-          </button>
-        </div>
-      )}
-
-      {/* Step 2: Create Smart Contract */}
-      {step === "approved" && (
-        <div className="space-y-4">
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-            <h4 className="font-medium text-green-800 mb-2">
-              🎉 KYC Approved!
-            </h4>
-            <p className="text-sm text-green-700">
-              Now we'll create your smart contract on Base Sepolia for
-              collateral management.
-            </p>
-          </div>
-
-          <button
-            onClick={handleCreateContract}
-            disabled={isLoading}
-            className="w-full py-3 px-4 rounded-full text-sm font-medium bg-green-600 text-white hover:bg-green-700"
-          >
-            {isLoading ? "Creating Smart Contract..." : "Create Smart Contract"}
-          </button>
-        </div>
-      )}
-
-      {/* Step 3: Smart Contract Created */}
-      {step === "contract-created" && (
-        <div className="space-y-4">
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <h4 className="font-medium text-blue-800 mb-2">
-              🏗️ Smart Contract Created!
-            </h4>
-            <p className="text-sm text-blue-700 font-mono">
-              Contract: {contractAddress?.slice(0, 6)}...
-              {contractAddress?.slice(-6)}
-            </p>
-            <p className="text-xs text-blue-600 mt-1">
-              Base Sepolia • Ready for card issuance
-            </p>
-          </div>
-
-          <button
-            onClick={handleIssueCard}
-            disabled={isLoading}
-            className="w-full py-3 px-4 rounded-full text-sm font-medium bg-blue-600 text-white hover:bg-blue-700"
-          >
-            {isLoading ? "Issuing Card..." : "Issue Virtual Visa Card"}
-          </button>
-        </div>
-      )}
-
-      {/* Update Step 4: Fund Card text */}
-      {step === "card-issued" && (
-        <div className="space-y-6 mb-6">
-          <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-            <h4 className="font-medium text-purple-800 mb-2">
-              💳 Card Issued!
-            </h4>
-            <p className="text-sm text-purple-700">
-              Your virtual Visa card is ready. Fund it with RUSD collateral to
-              enable spending.
-            </p>
-          </div>
-
-          {/* Fund Card Section */}
-          <div className="bg-white border border-gray-200 rounded-lg p-4">
-            <h4 className="font-medium text-gray-900 mb-3">Fund Card</h4>
-
+          <div className="flex items-end justify-between text-[11px]">
             <div>
-              <label className="block text-sm text-gray-700 mb-2">
-                Amount (RUSD)
-              </label>
+              <p className="mb-0.5 tracking-wider text-white/30 uppercase">
+                Name
+              </p>
+              <p className="text-white/60">
+                {cardData?.displayName || walletEmail || "Cardholder"}
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="mb-0.5 tracking-wider text-white/30 uppercase">
+                CVC
+              </p>
+              <p className="font-mono text-white/60">
+                {showCardDetails && decryptedCardData
+                  ? decryptedCardData.cvc
+                  : "\u2022\u2022\u2022"}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 
-              {/* Amount Buttons and Fund Button */}
-              <div className="flex gap-2">
-                {[5, 10, 25, 50].map((amount) => (
+  const sidebarCard = (
+    <div className="overflow-hidden rounded-2xl bg-white shadow-[0_4px_24px_-4px_rgba(16,24,40,0.08),0_2px_8px_-2px_rgba(16,24,40,0.03)]">
+      <div className="flex items-center justify-between border-b border-gray-100/80 px-6 py-5">
+        <h2 className="text-base font-semibold text-gray-800">Rain Card</h2>
+        {step !== "card-issued" && (
+          <div className="flex items-center gap-1.5">
+            {STEPS.map((_, i) => (
+              <div
+                key={i}
+                className={`h-1.5 w-1.5 rounded-full transition-colors ${
+                  i < currentStepIndex
+                    ? "bg-emerald-500"
+                    : i === currentStepIndex
+                      ? "bg-gray-800"
+                      : "bg-gray-200"
+                }`}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="p-4">
+        {initialLoading && (
+          <div className="flex items-center justify-center py-6">
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600" />
+          </div>
+        )}
+
+        {!initialLoading && step === "signup" && (
+          <div>
+            <div className="mb-3 rounded-xl border border-gray-100 bg-gray-50 p-3">
+              <p className="mb-1 text-xs font-medium text-gray-600">
+                Rain Virtual Visa
+              </p>
+              <p className="text-xs text-gray-400">
+                Apply for a virtual card. Uses test KYC data for demo.
+              </p>
+            </div>
+            <button
+              onClick={handleApply}
+              disabled={isLoading || !walletEmail}
+              className="w-full rounded-xl bg-gray-900 py-3 text-sm font-semibold text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isLoading ? (
+                <span className="flex items-center justify-center gap-2">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                  Applying...
+                </span>
+              ) : (
+                "Apply for Card"
+              )}
+            </button>
+          </div>
+        )}
+
+        {!initialLoading && step === "contract-created" && (
+          <div>
+            <div className="mb-3 rounded-xl border border-emerald-100 bg-emerald-50 p-3">
+              <p className="mb-1 text-xs font-medium text-emerald-700">
+                Contract Ready
+              </p>
+              <p className="font-mono text-xs text-emerald-600">
+                {contractAddress?.slice(0, 6)}...{contractAddress?.slice(-4)}
+              </p>
+            </div>
+            <button
+              onClick={handleIssueCard}
+              disabled={isLoading}
+              className="w-full rounded-xl bg-gray-900 py-3 text-sm font-semibold text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isLoading ? (
+                <span className="flex items-center justify-center gap-2">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                  Issuing...
+                </span>
+              ) : (
+                "Issue Virtual Card"
+              )}
+            </button>
+          </div>
+        )}
+
+        {!initialLoading && step === "card-issued" && cardData && (
+          <div>
+            <CardVisual className="aspect-[1.6/1]" />
+            <div className="mt-3 mb-3 flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-800">
+                  Virtual Visa
+                </p>
+                <p className="text-xs text-gray-400">
+                  {"\u2022\u2022\u2022\u2022"} {last4}
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                <span className="text-xs font-medium text-emerald-600">
+                  Active
+                </span>
+              </div>
+            </div>
+            {creditBalances && (
+              <div className="mb-3 flex items-center gap-3 rounded-lg bg-gray-50 px-3 py-2.5">
+                <div className="flex-1">
+                  <p className="text-[10px] tracking-wider text-gray-400 uppercase">
+                    Spending Power
+                  </p>
+                  <p className="text-sm font-semibold text-gray-800">
+                    ${creditBalances.spendingPower.toFixed(2)}
+                  </p>
+                </div>
+                <div className="h-8 w-px bg-gray-200" />
+                <div className="flex-1">
+                  <p className="text-[10px] tracking-wider text-gray-400 uppercase">
+                    Credit Limit
+                  </p>
+                  <p className="text-sm font-semibold text-gray-800">
+                    ${creditBalances.creditLimit.toFixed(2)}
+                  </p>
+                </div>
+              </div>
+            )}
+            <button
+              onClick={() => setShowManageModal(true)}
+              className="w-full rounded-xl bg-gray-100 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200"
+            >
+              Manage Card
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const manageModal = showManageModal && step === "card-issued" && cardData && (
+    <>
+      <div
+        className="fixed inset-0 z-40 bg-black/70 backdrop-blur-md"
+        style={{ animation: "fade-in 0.2s ease-out" }}
+        onClick={() => setShowManageModal(false)}
+      />
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        style={{ animation: "modal-in 0.3s ease-out" }}
+      >
+        <div className="relative flex max-h-[90vh] w-full max-w-[480px] flex-col overflow-hidden rounded-3xl border border-white/[0.06] bg-gradient-to-br from-[#1a1f2e] to-[#0d1117] shadow-2xl">
+          <div className="pointer-events-none absolute inset-0 overflow-hidden">
+            <div className="absolute top-0 right-1/4 h-[500px] w-[500px] -translate-y-1/2 rounded-full bg-blue-500/[0.06] blur-[100px]" />
+            <div className="absolute bottom-0 left-0 h-[300px] w-[300px] translate-y-1/2 rounded-full bg-emerald-500/[0.05] blur-[80px]" />
+          </div>
+
+          <button
+            onClick={() => setShowManageModal(false)}
+            className="absolute top-5 right-5 z-10 flex h-8 w-8 items-center justify-center rounded-full text-white/30 transition-all hover:bg-white/10 hover:text-white/70"
+          >
+            <X size={16} strokeWidth={2.5} />
+          </button>
+
+          <div className="relative flex-1 overflow-y-auto px-8 pt-10 pb-8">
+            <div className="mb-6">
+              <h2 className="mb-1 text-xl font-semibold text-white">
+                Your Card
+              </h2>
+              <p className="text-sm text-white/40">
+                Rain Virtual Visa {"\u00b7"} {"\u2022\u2022\u2022\u2022"}{" "}
+                {last4}
+              </p>
+            </div>
+
+            <CardVisual className="mb-6 aspect-[1.7/1]" />
+
+            <div className="mb-8 flex items-center justify-center gap-6">
+              <button
+                onClick={() =>
+                  showCardDetails
+                    ? setShowCardDetails(false)
+                    : handleRevealCard()
+                }
+                disabled={isRevealing}
+                className="group flex flex-col items-center gap-2"
+              >
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/[0.08] transition-colors group-hover:bg-white/[0.14]">
+                  {showCardDetails ? (
+                    <EyeOff size={20} className="text-white/70" />
+                  ) : (
+                    <Eye size={20} className="text-white/70" />
+                  )}
+                </div>
+                <span className="text-[11px] font-medium text-white/50">
+                  {isRevealing
+                    ? "..."
+                    : showCardDetails
+                      ? "Conceal"
+                      : "Reveal"}
+                </span>
+              </button>
+
+              <button
+                onClick={() =>
+                  document
+                    .getElementById("fund-section")
+                    ?.scrollIntoView({ behavior: "smooth" })
+                }
+                className="group flex flex-col items-center gap-2"
+              >
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/[0.08] transition-colors group-hover:bg-white/[0.14]">
+                  <Plus size={20} className="text-white/70" />
+                </div>
+                <span className="text-[11px] font-medium text-white/50">
+                  Fund
+                </span>
+              </button>
+
+              <button
+                disabled
+                className="group flex flex-col items-center gap-2 opacity-40"
+              >
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/[0.08]">
+                  <Lock size={20} className="text-white/70" />
+                </div>
+                <span className="text-[11px] font-medium text-white/50">
+                  Freeze
+                </span>
+              </button>
+            </div>
+
+            {creditBalances && (
+              <div className="mb-6">
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="text-sm font-medium text-white/70">
+                    Spending
+                  </h3>
                   <button
-                    key={amount}
-                    onClick={() => setRusdAmount(amount.toString())}
-                    className={cn(
-                      "px-3 py-2 text-sm border rounded transition-colors",
-                      rusdAmount === amount.toString()
-                        ? "border-blue-500 bg-blue-50 text-blue-700"
-                        : "border-gray-300 bg-white text-gray-700 hover:border-gray-400"
-                    )}
+                    onClick={() => refreshCreditBalances()}
+                    disabled={isRefreshing}
+                    className="text-[11px] text-white/30 transition-colors hover:text-white/60 disabled:opacity-50"
                   >
-                    ${amount}
+                    {isRefreshing ? "..." : "Refresh"}
                   </button>
-                ))}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    {
+                      label: "Credit Limit",
+                      value: creditBalances.creditLimit,
+                      color: "text-white",
+                    },
+                    {
+                      label: "Spending Power",
+                      value: creditBalances.spendingPower,
+                      color: "text-emerald-400",
+                    },
+                    {
+                      label: "Pending",
+                      value: creditBalances.pendingCharges,
+                      color:
+                        creditBalances.pendingCharges > 0
+                          ? "text-amber-400"
+                          : "text-white/60",
+                    },
+                    {
+                      label: "Balance Due",
+                      value: creditBalances.balanceDue,
+                      color:
+                        creditBalances.balanceDue > 0
+                          ? "text-red-400"
+                          : "text-emerald-400",
+                    },
+                  ].map(({ label, value, color }) => (
+                    <div
+                      key={label}
+                      className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-3"
+                    >
+                      <p className="mb-1 text-[10px] tracking-wider text-white/30 uppercase">
+                        {label}
+                      </p>
+                      <p className={`text-sm font-semibold ${color}`}>
+                        ${value.toFixed(2)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
+            <div id="fund-section" className="mb-6">
+              <h3 className="mb-3 text-sm font-medium text-white/70">
+                Fund Card
+              </h3>
+              <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-4">
+                <p className="mb-3 text-xs text-white/40">
+                  Mint RUSD and deposit as collateral
+                </p>
+                <div className="mb-3 flex gap-2">
+                  {[5, 10, 25, 50].map((amt) => (
+                    <button
+                      key={amt}
+                      onClick={() => setRusdAmount(amt.toString())}
+                      className={`flex-1 rounded-xl py-2.5 text-sm font-medium transition-all ${
+                        rusdAmount === amt.toString()
+                          ? "border border-white/[0.15] bg-white/[0.12] text-white"
+                          : "border border-white/[0.06] bg-white/[0.04] text-white/40 hover:bg-white/[0.08]"
+                      }`}
+                    >
+                      ${amt}
+                    </button>
+                  ))}
+                </div>
                 <button
                   onClick={handleFundCard}
                   disabled={
@@ -562,382 +672,125 @@ export function RainCompleteFlow() {
                     parseFloat(rusdAmount) <= 0 ||
                     parseFloat(rusdAmount) > 100
                   }
-                  className={cn(
-                    "px-4 py-2 text-sm font-medium rounded transition-colors",
-                    isLoading ||
-                      !rusdAmount ||
-                      parseFloat(rusdAmount) <= 0 ||
-                      parseFloat(rusdAmount) > 100
-                      ? "bg-gray-200 text-gray-500 cursor-not-allowed"
-                      : "bg-blue-600 text-white hover:bg-blue-700"
-                  )}
+                  className="w-full rounded-xl bg-emerald-500 py-3 text-sm font-semibold text-white shadow-[0_4px_20px_-4px_rgba(16,185,129,0.4)] transition-colors hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  {isLoading ? "Processing..." : `Fund ($${rusdAmount})`}
+                  {isLoading ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                      Processing...
+                    </span>
+                  ) : (
+                    `Fund $${rusdAmount}`
+                  )}
                 </button>
               </div>
-              <p className="text-xs text-gray-500 mt-1">
-                (This will mint RUSD to your Crossmint wallet and send it to
-                your Rain smart contract)
-              </p>
-            </div>
-          </div>
-
-          {/* Card Details Display */}
-          {cardData && (
-            <div className="bg-white border border-gray-200 rounded-lg p-4">
-              <div className="flex justify-between items-center mb-3">
-                <h5 className="font-medium text-gray-800">Card Details</h5>
-                <button
-                  onClick={() => {
-                    if (showCardDetails) {
-                      setShowCardDetails(false);
-                    } else {
-                      handleRevealCard();
-                    }
-                  }}
-                  disabled={isRevealing}
-                  className={cn(
-                    "text-xs px-3 py-1 rounded transition-colors font-medium",
-                    showCardDetails
-                      ? "bg-red-100 text-red-700 hover:bg-red-200"
-                      : "bg-blue-100 text-blue-700 hover:bg-blue-200",
-                    isRevealing && "opacity-50 cursor-not-allowed"
-                  )}
-                >
-                  {isRevealing
-                    ? "Revealing..."
-                    : showCardDetails
-                    ? "Conceal Card"
-                    : "Reveal Card"}
-                </button>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="text-gray-500">Card Number:</span>
-                  {showCardDetails && decryptedCardData ? (
-                    <div className="flex items-center gap-2">
-                      <p className="font-mono text-lg font-semibold text-green-700">
-                        {formatCardNumber(decryptedCardData.cardNumber)}
-                      </p>
-                      <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(
-                            decryptedCardData.cardNumber
-                          );
-                          alert("Card number copied to clipboard");
-                        }}
-                        className="text-gray-500 hover:text-gray-700"
-                      >
-                        <Image
-                          src="/copy.svg"
-                          alt="Copy"
-                          width={16}
-                          height={16}
-                        />
-                      </button>
-                    </div>
-                  ) : (
-                    <p className="font-mono">**** **** **** {cardData.last4}</p>
-                  )}
-                </div>
-
-                <div>
-                  <span className="text-gray-500">CVC:</span>
-                  {showCardDetails && decryptedCardData ? (
-                    <p className="font-mono text-lg font-semibold text-green-700">
-                      {decryptedCardData.cvc}
-                    </p>
-                  ) : (
-                    <p className="font-mono">***</p>
-                  )}
-                </div>
-
-                <div>
-                  <span className="text-gray-500">Type:</span>
-                  <p className="capitalize">{cardData.type}</p>
-                </div>
-
-                <div>
-                  <span className="text-gray-500">Status:</span>
-                  <p
-                    className={cn(
-                      "capitalize font-medium",
-                      cardData.status === "active"
-                        ? "text-green-600"
-                        : "text-yellow-600"
-                    )}
-                  >
-                    {cardData.status}
-                  </p>
-                </div>
-
-                {cardData.expirationMonth && cardData.expirationYear && (
-                  <div>
-                    <span className="text-gray-500">Expires:</span>
-                    <p className="font-mono">
-                      {cardData.expirationMonth}/{cardData.expirationYear}
-                    </p>
-                  </div>
-                )}
-
-                <div>
-                  <span className="text-gray-500">Limit:</span>
-                  <p>
-                    $
-                    {cardData.limit?.amount
-                      ? cardData.limit.amount.toFixed(2)
-                      : "N/A"}
-                  </p>
-                </div>
-              </div>
-
-              {/* Credit Balance Information */}
-              {creditBalances && (
-                <div className="mt-4 pt-4 border-t border-gray-200">
-                  <div className="flex justify-between items-center mb-3">
-                    <div className="flex gap-2 items-center">
-                      <h6 className="font-medium text-gray-800">
-                        Credit Balance
-                      </h6>
-                      <div className="text-xs text-gray-500">
-                        Balance updates may take a few seconds to appear.
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => handleRefreshCreditBalances()}
-                      disabled={isRefreshing}
-                      className={cn(
-                        "text-xs px-2 py-1 rounded transition-colors",
-                        isRefreshing
-                          ? "bg-gray-200 text-gray-500 cursor-not-allowed"
-                          : "bg-blue-100 text-blue-700 hover:bg-blue-200"
-                      )}
-                    >
-                      {isRefreshing ? "Refreshing..." : "Refresh"}
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <span className="text-gray-500">Credit Limit:</span>
-                      <p className="font-semibold text-blue-600">
-                        ${creditBalances.creditLimit.toFixed(2)}
-                      </p>
-                    </div>
-
-                    <div>
-                      <span className="text-gray-500">Spending Power:</span>
-                      <p className="font-semibold text-green-600">
-                        ${creditBalances.spendingPower.toFixed(2)}
-                      </p>
-                    </div>
-
-                    <div>
-                      <span className="text-gray-500">Pending Charges:</span>
-                      <p
-                        className={cn(
-                          "font-medium",
-                          creditBalances.pendingCharges > 0
-                            ? "text-yellow-600"
-                            : "text-gray-600"
-                        )}
-                      >
-                        ${creditBalances.pendingCharges.toFixed(2)}
-                      </p>
-                    </div>
-
-                    <div>
-                      <span className="text-gray-500">Posted Charges:</span>
-                      <p
-                        className={cn(
-                          "font-medium",
-                          creditBalances.postedCharges > 0
-                            ? "text-red-600"
-                            : "text-gray-600"
-                        )}
-                      >
-                        ${creditBalances.postedCharges.toFixed(2)}
-                      </p>
-                    </div>
-
-                    <div className="col-span-2">
-                      <span className="text-gray-500">Balance Due:</span>
-                      <p
-                        className={cn(
-                          "font-semibold text-lg",
-                          creditBalances.balanceDue > 0
-                            ? "text-red-600"
-                            : "text-green-600"
-                        )}
-                      >
-                        ${creditBalances.balanceDue.toFixed(2)}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Security Notice */}
-              {showCardDetails && (
-                <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                  <p className="text-xs text-yellow-800">
-                    🔒 Card details are decrypted server-side. Keep this
-                    information secure.
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {contractData &&
-        (step === "contract-created" || step === "card-issued") && (
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
-            <div className="flex justify-between items-center mb-3">
-              <h5 className="font-medium text-gray-800">Smart Contract Info</h5>
-              <button
-                onClick={handleRefreshBalance}
-                disabled={isRefreshing}
-                className={cn(
-                  "flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors",
-                  isRefreshing
-                    ? "bg-gray-200 text-gray-500 cursor-not-allowed"
-                    : "bg-blue-100 text-blue-700 hover:bg-blue-200"
-                )}
-              >
-                {isRefreshing ? "Refreshing..." : "Refresh"}
-              </button>
             </div>
 
-            <div className="grid grid-cols-1 gap-3 text-sm">
-              <div className="flex justify-between items-center">
-                <span className="text-gray-500">Deposit Address:</span>
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs">
-                    {contractData.depositAddress.slice(0, 6)}...
-                    {contractData.depositAddress.slice(-6)}
-                  </span>
+            {contractData && (
+              <div className="mb-6">
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="text-sm font-medium text-white/70">
+                    Collateral
+                  </h3>
                   <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(
-                        contractData.depositAddress
-                      );
-                      alert("Deposit Address copied to clipboard");
-                    }}
-                    className="p-1 hover:bg-gray-200 rounded transition-colors"
-                    title="Copy address"
+                    onClick={handleRefreshBalance}
+                    disabled={isRefreshing}
+                    className="text-[11px] text-white/30 transition-colors hover:text-white/60 disabled:opacity-50"
                   >
-                    <Image src="/copy.svg" alt="Copy" width={16} height={16} />
+                    {isRefreshing ? "..." : "Refresh"}
                   </button>
                 </div>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">Chain:</span>
-                <span>Base Sepolia ({contractData.chainId})</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">Contract Version:</span>
-                <span>v{contractData.contractVersion}</span>
-              </div>
-
-              {/* RUSD Token Info */}
-              <div className="border-t border-gray-300 pt-3 mt-2">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="font-medium text-gray-700">
-                    RUSD Collateral
-                  </span>
-                  <span
-                    className={cn(
-                      "font-bold text-lg",
-                      parseFloat(contractData.rusdToken.balance) > 0
-                        ? "text-green-600"
-                        : "text-gray-400"
-                    )}
-                  >
-                    $ {contractData.rusdToken.balance} RUSD
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 gap-4 text-xs text-gray-500">
-                  <div>
-                    <span>Exchange Rate:</span>
-                    <span className="ml-2">
-                      {contractData.rusdToken.exchangeRate}:1
-                    </span>
+                {contractAddress && (
+                  <div className="mb-3 flex items-center gap-2">
+                    <p className="text-[11px] text-white/30">Contract</p>
+                    <p className="font-mono text-[11px] text-white/50">
+                      {contractAddress.slice(0, 6)}...
+                      {contractAddress.slice(-4)}
+                    </p>
+                    <button
+                      onClick={() =>
+                        navigator.clipboard.writeText(contractAddress)
+                      }
+                      className="text-white/20 transition-colors hover:text-white/50"
+                    >
+                      <Copy size={12} />
+                    </button>
                   </div>
-                  <div>
-                    <span>Advance Rate:</span>
-                    <span className="ml-2">
-                      {contractData.rusdToken.advanceRate}%
-                    </span>
+                )}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-3">
+                    <p className="mb-1 text-[10px] tracking-wider text-white/30 uppercase">
+                      RUSD
+                    </p>
+                    <p
+                      className={`text-sm font-semibold ${
+                        parseFloat(
+                          contractData.rusdToken?.balance || "0"
+                        ) > 0
+                          ? "text-emerald-400"
+                          : "text-white/30"
+                      }`}
+                    >
+                      ${contractData.rusdToken?.balance || "0.00"}
+                    </p>
                   </div>
-                </div>
-                <div className="text-xs text-gray-400 mt-2">
-                  Token: {contractData.rusdToken.address.slice(0, 8)}...
-                  {contractData.rusdToken.address.slice(-8)}
-                </div>
-              </div>
-
-              {/* USDC Token Info */}
-              <div className="border-t border-gray-300 pt-3 mt-2">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="font-medium text-gray-700">
-                    USDC Collateral
-                  </span>
-                  <span
-                    className={cn(
-                      "font-bold text-lg",
-                      parseFloat(
-                        contractData.tokens.find(
-                          (t: any) => t.address === USDC_CONTRACT_ADDRESS
-                        )?.balance || "0"
-                      ) > 0
-                        ? "text-green-600"
-                        : "text-gray-400"
-                    )}
-                  >
-                    ${" "}
-                    {contractData.tokens.find(
-                      (t: any) => t.address === USDC_CONTRACT_ADDRESS
-                    )?.balance || "0"}{" "}
-                    USDC
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 gap-4 text-xs text-gray-500">
-                  <div>
-                    <span>Exchange Rate:</span>
-                    <span className="ml-2">
-                      {contractData.tokens.find(
-                        (t: any) => t.address === USDC_CONTRACT_ADDRESS
-                      )?.exchangeRate || "1"}
-                      :1
-                    </span>
-                  </div>
-                  <div>
-                    <span>Advance Rate:</span>
-                    <span className="ml-2">
-                      {contractData.tokens.find(
-                        (t: any) => t.address === USDC_CONTRACT_ADDRESS
-                      )?.advanceRate || "100"}
-                      %
-                    </span>
+                  <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-3">
+                    <p className="mb-1 text-[10px] tracking-wider text-white/30 uppercase">
+                      USDC
+                    </p>
+                    <p
+                      className={`text-sm font-semibold ${
+                        parseFloat(
+                          contractData.tokens?.find(
+                            (t: ContractToken) =>
+                              t.address === USDC_CONTRACT_ADDRESS
+                          )?.balance || "0"
+                        ) > 0
+                          ? "text-emerald-400"
+                          : "text-white/30"
+                      }`}
+                    >
+                      $
+                      {contractData.tokens?.find(
+                        (t: ContractToken) =>
+                          t.address === USDC_CONTRACT_ADDRESS
+                      )?.balance || "0.00"}
+                    </p>
                   </div>
                 </div>
-                <div className="text-xs text-gray-400 mt-2">
-                  Token:{" "}
-                  {contractData.tokens
-                    .find((t: any) => t.address === USDC_CONTRACT_ADDRESS)
-                    ?.address.slice(0, 8)}
-                  ...
-                  {contractData.tokens
-                    .find((t: any) => t.address === USDC_CONTRACT_ADDRESS)
-                    ?.address.slice(-8)}
-                </div>
               </div>
-            </div>
+            )}
           </div>
-        )}
-    </div>
+        </div>
+      </div>
+
+      <style jsx>{`
+        @keyframes fade-in {
+          from {
+            opacity: 0;
+          }
+          to {
+            opacity: 1;
+          }
+        }
+        @keyframes modal-in {
+          from {
+            opacity: 0;
+            transform: scale(0.95) translateY(10px);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+          }
+        }
+      `}</style>
+    </>
+  );
+
+  return (
+    <>
+      {sidebarCard}
+      {manageModal}
+    </>
   );
 }
