@@ -307,7 +307,8 @@ export function RainCompleteFlow() {
   };
 
   const formatCardNumber = (n: string) => n.replace(/(.{4})/g, "$1 ").trim();
-  const last4 = cardData?.last4 || cardData?.lastFour || "\u2022\u2022\u2022\u2022";
+  const last4 =
+    cardData?.last4 || cardData?.lastFour || "\u2022\u2022\u2022\u2022";
 
   const CardVisual = ({ className = "" }: { className?: string }) => (
     <div
@@ -356,7 +357,7 @@ export function RainCompleteFlow() {
   );
 
   const sidebarCard = (
-    <div className="overflow-hidden rounded-2xl bg-white shadow-[0_4px_24px_-4px_rgba(16,24,40,0.08),0_2px_8px_-2px_rgba(16,24,40,0.03)]">
+    <div className="mx-auto max-w-lg overflow-hidden rounded-2xl bg-white shadow-[0_4px_24px_-4px_rgba(16,24,40,0.08),0_2px_8px_-2px_rgba(16,24,40,0.03)]">
       <div className="flex items-center justify-between border-b border-gray-100/80 px-6 py-5">
         <h2 className="text-base font-semibold text-gray-800">Rain Card</h2>
         {step !== "card-issued" && (
@@ -368,8 +369,8 @@ export function RainCompleteFlow() {
                   i < currentStepIndex
                     ? "bg-emerald-500"
                     : i === currentStepIndex
-                      ? "bg-gray-800"
-                      : "bg-gray-200"
+                    ? "bg-gray-800"
+                    : "bg-gray-200"
                 }`}
               />
             ))}
@@ -545,11 +546,7 @@ export function RainCompleteFlow() {
                   )}
                 </div>
                 <span className="text-[11px] font-medium text-white/50">
-                  {isRevealing
-                    ? "..."
-                    : showCardDetails
-                      ? "Conceal"
-                      : "Reveal"}
+                  {isRevealing ? "..." : showCardDetails ? "Conceal" : "Reveal"}
                 </span>
               </button>
 
@@ -724,9 +721,7 @@ export function RainCompleteFlow() {
                     </p>
                     <p
                       className={`text-sm font-semibold ${
-                        parseFloat(
-                          contractData.rusdToken?.balance || "0"
-                        ) > 0
+                        parseFloat(contractData.rusdToken?.balance || "0") > 0
                           ? "text-emerald-400"
                           : "text-white/30"
                       }`}
